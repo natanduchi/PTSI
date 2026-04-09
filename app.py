@@ -3,17 +3,12 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 
-col1, col2, col3 = st.columns([1,2,1])
-with col2:
-    st.image("Logo.png", width=200)
-# =========================
-# LOGIN SYSTEM
-# =========================
 
 USERS = {
     "natan": "Natan2026",
     "naud": "Naud2026",
-    "Delfina": "Delfina2026"
+    "Delfina": "Delfina2026",
+    "Karmen": "Karmen2026"
 }
 
 if "user" not in st.session_state:
@@ -112,10 +107,6 @@ def calculate_ptsi(df):
 
     return ptsi_list
 
-# =========================
-# 🧠 AI FUNCTION
-# =========================
-
 def ai_feedback(row, df):
 
     stress = row["stress"]
@@ -130,32 +121,63 @@ def ai_feedback(row, df):
     HRV_base = recent["HRV"].median()
     RHR_base = recent["RHR"].median()
 
+    # =========================
+    # STATES
+    # =========================
     phys_fatigue = HRV < HRV_base * 0.9 and RHR > RHR_base * 1.05
     psych_fatigue = stress > 7 and motivation < 4
     mixed_state = phys_fatigue and psych_fatigue
 
     high_ready = HRV > HRV_base * 1.05 and RHR < RHR_base * 0.95 and motivation > 6
 
+    # =========================
+    # TREND
+    # =========================
     trend = "stable"
 
     if len(df) >= 3:
         last3 = df.tail(3)["PTSI"]
-
         if last3.isna().sum() == 0:
             if last3.iloc[-1] > last3.iloc[0] + 0.1:
                 trend = "fatigue increasing"
             elif last3.iloc[-1] < last3.iloc[0] - 0.1:
                 trend = "recovering"
-            else:
-                trend = "stable"
 
+    # =========================
+    # MOMENTUM (5 days)
+    # =========================
+    fatigue_accumulation = False
+    if len(df) >= 5:
+        last5 = df.tail(5)["PTSI"]
+        if last5.isna().sum() == 0 and last5.is_monotonic_increasing:
+            fatigue_accumulation = True
+
+    # =========================
+    # HRV suppression
+    # =========================
+    hrv_suppression = False
+    if len(df) >= 3:
+        last3_hrv = df.tail(3)["HRV"]
+        if (last3_hrv < HRV_base * 0.92).all():
+            hrv_suppression = True
+
+    # =========================
+    # VARIABILITY
+    # =========================
+    variability = recent["PTSI"].std() if len(recent) > 1 else 0
+
+    # =========================
+    # CONFLICT
+    # =========================
     conflict = None
-
     if readiness > 7 and phys_fatigue:
         conflict = "Feels good but physiology shows fatigue"
     elif readiness < 4 and not phys_fatigue:
         conflict = "Feels bad but physiology is normal"
 
+    # =========================
+    # STATE
+    # =========================
     if mixed_state:
         state = "Systemic fatigue"
     elif phys_fatigue:
@@ -167,6 +189,9 @@ def ai_feedback(row, df):
     else:
         state = "Mixed / compensated"
 
+    # =========================
+    # DRIVERS
+    # =========================
     drivers = []
 
     if stress > 7:
@@ -183,6 +208,9 @@ def ai_feedback(row, df):
     if len(drivers) == 0:
         drivers.append("no clear issues")
 
+    # =========================
+    # RISK
+    # =========================
     if ptsi > 0.75:
         risk = "High risk"
     elif ptsi > 0.6:
@@ -192,6 +220,9 @@ def ai_feedback(row, df):
     else:
         risk = "Low risk"
 
+    # =========================
+    # TRAINING
+    # =========================
     if ptsi < 0.2:
         training = "High intensity possible"
     elif ptsi < 0.5:
@@ -201,6 +232,57 @@ def ai_feedback(row, df):
     else:
         training = "Recovery"
 
+    # =========================
+    # INSIGHTS + TIPS
+    # =========================
+    insights = []
+    tips = []
+
+    if fatigue_accumulation:
+        insights.append("Fatigue is accumulating over multiple days")
+        tips.append("Consider a recovery day")
+
+    if hrv_suppression:
+        insights.append("HRV suppressed for several days")
+        tips.append("Prioritize sleep and recovery")
+
+    if HRV < HRV_base * 0.92:
+        insights.append("HRV is below your normal")
+        tips.append("Keep intensity low")
+
+    if RHR > RHR_base * 1.08:
+        insights.append("Resting HR is elevated")
+        tips.append("Hydrate well and avoid intensity")
+
+    if stress > 7:
+        insights.append("Stress levels are high")
+        tips.append("Keep training simple and controlled")
+
+    if motivation < 4:
+        insights.append("Motivation is low")
+        tips.append("Start easy and focus on enjoyment")
+
+    if variability > 0.2:
+        insights.append("Your system is unstable")
+        tips.append("Avoid large intensity swings")
+
+    if readiness > 80:
+        insights.append("You are in a strong performance window")
+        tips.append("Good day for a key session")
+
+    if readiness < 40:
+        insights.append("You are not well recovered")
+        tips.append("Focus on recovery")
+
+    if phys_fatigue:
+        insights.append("Fatigue is mainly physiological")
+
+    if psych_fatigue:
+        insights.append("Fatigue is mainly psychological")
+
+    # =========================
+    # OUTPUT
+    # =========================
     text = f"""
 🧠 STATE: {state}
 
@@ -211,16 +293,18 @@ def ai_feedback(row, df):
 ⚠️ RISK: {risk}
 
 🏋️ TRAINING: {training}
+
+🧠 INSIGHTS:
+- {"\n- ".join(insights) if insights else "No major insights"}
+
+💡 WHAT TO DO:
+- {"\n- ".join(tips) if tips else "Train as planned"}
 """
 
     if conflict:
         text += f"\n\n⚖️ CONFLICT: {conflict}"
 
     return text
-
-# =========================
-# UI
-# =========================
 
 st.sidebar.write(f"Logged in as: {st.session_state.user}")
 
@@ -325,7 +409,7 @@ if len(data) > 0:
         else:
             st.error("🔴 Recovery")
 
-        st.subheader("🧠 AI Insight")
+        st.subheader("Reccomandations")
         st.info(ai_feedback(last, data))
 
     else:
