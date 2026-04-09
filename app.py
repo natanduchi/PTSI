@@ -11,7 +11,6 @@ USERS = {
     "natan": "Natan2026",
     "naud": "Naud2026",
     "Delfina": "Delfina2026"
-    "Karmen": "Karmen2026"
 }
 
 if "user" not in st.session_state:
