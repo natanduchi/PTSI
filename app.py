@@ -3,6 +3,9 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 
+col1, col2, col3 = st.columns([1,2,1])
+with col2:
+    st.image("Logo.png", width=200)
 # =========================
 # LOGIN SYSTEM
 # =========================
